@@ -45,12 +45,6 @@ API_ROOT = '/%s/' % (API_VERSION)
 
 NAMESPACE  = 'https://%s/doc%s' %(API_HOST, API_ROOT)
 
-VALID_ZONE_EXTRA_PARAMS = ['SOA_Email', 'Refresh_sec', 'Retry_sec',
-                           'Expire_sec', 'status', 'master_ips']
-
-VALID_RECORD_EXTRA_PARAMS = ['Priority', 'Weight', 'Port', 'Protocol',
-                             'TTL_sec']
-
 class Route53Error(LibcloudError):
     def __init__(self, code, errors):
         self.code = code
@@ -93,24 +87,29 @@ class Route53Connection(ConnectionUserAndKey):
     """
     Route53 API end point
     """
-
-    utc = datetime.datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
     host = API_HOST
 
     def pre_connect_hook(self, params, headers):
-        headers['Date'] = self.utc
-        headers['X-Amzn-Authorization'] = ('AWS3-HTTPS ' + 'AWSAccessKeyId=' +
-                self.user_id + ',Signature=' +
-                self._get_aws_auth_b64(self.key) + ',Algorithm=HmacSHA1')
+        time_string = datetime.datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+        headers['Date'] = time_string
+        tmp = []
+
+        auth = {'AWSAccessKeyId': self.user_id, 'Signature':
+                self._get_aws_auth_b64(self.key, time_string), 'Algorithm': 'HmacSHA1'}
+
+        for k, v in auth.items():
+            tmp.append("%s=%s" % (k, v))
+
+        headers['X-Amzn-Authorization'] = "AWS3-HTTPS " + ",".join(tmp)
 
         return params, headers
 
-    def _get_aws_auth_b64(self, secret_key):
+    def _get_aws_auth_b64(self, secret_key, time_string):
 
         """Fri, 09 Nov 2001 01:08:47 -0000"""
 
         b64_hmac = base64.b64encode(
-            hmac.new(b(secret_key), b(self.utc), digestmod=sha1).digest()
+            hmac.new(b(secret_key), b(time_string), digestmod=sha1).digest()
         )
 
         return b64_hmac
@@ -133,20 +132,24 @@ class Route53DNSDriver(DNSDriver):
     def list_zones(self):
         data = ET.XML(self.connection.request(API_ROOT + 'hostedzone').object)
         zone_data = []
+
         for element in data.findall(fixxpath(xpath='HostedZones/HostedZone', namespace=NAMESPACE)):
-            zones = zone_data.append(self._to_zone((findtext(element=element, xpath='Name',
-                namespace=NAMESPACE), findtext(element=element, xpath='Id',
-                namespace=NAMESPACE))))
+            zone_data.append(self._to_zone(element))
 
         return zone_data
 
-    def _to_zone(self, item):
+    def _to_zone(self, elem):
         extra=None
 
         """
         Build an Zone object from the item dictionary.
         """
-        zone = Zone(id=item[1], domain=item[0], type='ZONE', ttl='0',
+        name = findtext(element=elem, xpath='Name', namespace=NAMESPACE)
+        id = findtext(element=elem, xpath='Id', namespace=NAMESPACE)
+        comment = findtext(element=elem, xpath='Config/Comment', namespace=NAMESPACE)
+        extra = {'comment': comment}
+
+        zone = Zone(id=id, domain=name, type='master', ttl=0,
                 driver=self, extra=extra)
         return zone
 
