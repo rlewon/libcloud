@@ -105,9 +105,6 @@ class Route53Connection(ConnectionUserAndKey):
         return params, headers
 
     def _get_aws_auth_b64(self, secret_key, time_string):
-
-        """Fri, 09 Nov 2001 01:08:47 -0000"""
-
         b64_hmac = base64.b64encode(
             hmac.new(b(secret_key), b(time_string), digestmod=sha1).digest()
         )
@@ -139,28 +136,18 @@ class Route53DNSDriver(DNSDriver):
         return zone_data
 
     def _to_zone(self, elem):
-        extra=None
-
-        """
-        Build an Zone object from the item dictionary.
-        """
         name = findtext(element=elem, xpath='Name', namespace=NAMESPACE)
         id = findtext(element=elem, xpath='Id', namespace=NAMESPACE)
         comment = findtext(element=elem, xpath='Config/Comment', namespace=NAMESPACE)
-        extra = {'comment': comment}
+        resource_record_count = int(findtext(element=elem, xpath='ResourceRecordSetCount',
+                namespace=NAMESPACE))
+
+        extra = {'Comment': comment, 'ResourceRecordSetCount':
+                resource_record_count}
 
         zone = Zone(id=id, domain=name, type='master', ttl=0,
                 driver=self, extra=extra)
+
         return zone
 
-
-    def _to_zones(self, items):
-        """
-        Convert a list of items to the Zone objects.
-        """
-
-        for item in items:
-            zones.append(self._to_zone(item))
-
-        return zones
 
