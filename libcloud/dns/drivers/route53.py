@@ -137,7 +137,8 @@ class Route53DNSDriver(DNSDriver):
 
     def _to_zone(self, elem):
         name = findtext(element=elem, xpath='Name', namespace=NAMESPACE)
-        id = findtext(element=elem, xpath='Id', namespace=NAMESPACE)
+        id = findtext(element=elem, xpath='Id',
+                namespace=NAMESPACE).replace('/hostedzone/', '')
         comment = findtext(element=elem, xpath='Config/Comment', namespace=NAMESPACE)
         resource_record_count = int(findtext(element=elem, xpath='ResourceRecordSetCount',
                 namespace=NAMESPACE))
@@ -150,4 +151,55 @@ class Route53DNSDriver(DNSDriver):
 
         return zone
 
+    def list_records(self, zone):
+        data = ET.XML(self.connection.request(API_ROOT + 'hostedzone/' + zone.id
+            + '/rrset').object)
 
+        """ Create dict of resource records. """
+        records = []
+        for elem in \
+        data.findall(fixxpath(xpath='ResourceRecordSets/ResourceRecordSet',
+            namespace=NAMESPACE)):
+            records.append(self._to_record(elem, zone))
+
+        print data
+
+        return records
+
+    def _to_record(self, elem, zone):
+        name = findtext(element=elem, xpath='Name',
+                namespace=NAMESPACE)
+        type = self._string_to_record_type(findtext(element=elem, xpath='Type',
+                namespace=NAMESPACE))
+        TTL = findtext(element=elem, xpath='TTL',
+                namespace=NAMESPACE)
+        data = ''
+
+        for element in elem.findall(fixxpath(xpath='ResourceRecord',
+                namespace=NAMESPACE)):
+            value = findtext(element=element, xpath='Value',
+                    namespace=NAMESPACE)
+            data += value
+            # TODO: Multi value return.
+            break
+
+        extra = {}
+
+        record = Record(id=None, name=name, type=type, data=data, zone=zone,
+                driver=self, extra=extra)
+
+        return record
+
+    def get_zone(self, zone_id):
+        data = ET.XML(self.connection.request(API_ROOT + 'hostedzone/' + zone_id).object)
+        domain = data.findtext(element=data,
+                xpath='GetHostedZoneResponse/HostedZone', namespace=NAMESPACE)
+
+        resource_record_count = data.findtext(element=data,
+                xpath='GetHostedZoneResponse/HostedZone/ResourceRecordSetCount')
+        extra = {'ResourceRecordSetCount': resource_record_count}
+
+        zone = Zone(id=zone_id, domain=domain, type='master', ttl=0,
+                driver=self, extra=extra)
+
+        return zone
