@@ -203,3 +203,19 @@ class Route53DNSDriver(DNSDriver):
                 driver=self, extra=extra)
 
         return zone
+
+    def get_record(self, zone_id, record_id):
+        zone = self.get_zone(zone_id=zone_id)
+
+        data = ET.XML(self.connection.request(API_ROOT + 'hostedzone/' + zone_id
+            + "/rrset?maxitems=1&name=" + record_id).object)
+
+        record = ''
+
+        for elem in \
+        data.findtext(xpath='ResourceRecordSets/ResourceRecordSet/ResourceRecords/ResourceRecord/Value',
+            namespace=NAMESPACE):
+            records += self._to_record(elem, zone)
+
+        # TODO: proper record return.
+        return record
